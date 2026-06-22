@@ -1,0 +1,8 @@
+Metadata-Version: 2.4
+Name: linear-orchestrator
+Version: 0.1.0
+Summary: Linear webhook → Hermes agent middleware with session mapping and write-back.
+Requires-Python: >=3.10
+Requires-Dist: aiohttp>=3.9
+Requires-Dist: python-dotenv>=1.0
+Requires-Dist: PyYAML>=6.0

@@ -1,0 +1,2 @@
+[console_scripts]
+linear-orchestrator = linear_orchestrator.__main__:main

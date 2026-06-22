@@ -1,0 +1,20 @@
+[project]
+name = "linear-orchestrator"
+version = "0.1.0"
+description = "Linear webhook → Hermes agent middleware with session mapping and write-back."
+requires-python = ">=3.10"
+dependencies = [
+  "aiohttp>=3.9",
+  "python-dotenv>=1.0",
+  "PyYAML>=6.0",
+]
+
+[project.scripts]
+linear-orchestrator = "linear_orchestrator.__main__:main"
+
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["linear_orchestrator*"]

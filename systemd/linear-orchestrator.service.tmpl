@@ -1,0 +1,18 @@
+[Unit]
+Description=Linear webhook → Hermes orchestrator
+After=network.target
+
+[Service]
+Type=simple
+User=__USER__
+WorkingDirectory=__HERE__
+EnvironmentFile=-%h/.hermes/.env
+EnvironmentFile=-__HERE__/.env
+ExecStart=%h/linear-orchestrator-venv/bin/python -m linear_orchestrator
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target
