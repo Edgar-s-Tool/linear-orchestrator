@@ -77,6 +77,7 @@ async def _handle_linear(request: web.Request) -> web.Response:
 
 async def _process(cfg: Config, store: SessionStore, ev, delivery_id: str,
                    broadcaster: Broadcaster) -> None:
+    t0 = time.time()
     try:
         await broadcaster.publish(ev.session_key, {
             "type": "received", "delivery_id": delivery_id,
@@ -88,31 +89,35 @@ async def _process(cfg: Config, store: SessionStore, ev, delivery_id: str,
         ok, reply = await run_hermes(ev, cfg.hermes_path, cfg.hermes_timeout_sec,
                                      ev.session_key, cfg.default_model)
         if not ok:
+            ms = int((time.time() - t0) * 1000)
             log.warning("hermes failed: %s", reply[:200])
-            store.record_delivery(delivery_id, ev.session_key, "hermes_fail", reply[:1000])
+            store.record_delivery(delivery_id, ev.session_key, "hermes_fail", reply[:1000], latency_ms=ms)
             await broadcaster.publish(ev.session_key, {"type": "hermes.failed",
-                                                        "delivery_id": delivery_id, "error": reply[:300]})
+                                                        "delivery_id": delivery_id, "error": reply[:300], "ms": ms})
             return
         if not reply:
-            store.record_delivery(delivery_id, ev.session_key, "hermes_skip", "agent returned __SKIP__")
-            await broadcaster.publish(ev.session_key, {"type": "hermes.skip", "delivery_id": delivery_id})
+            ms = int((time.time() - t0) * 1000)
+            store.record_delivery(delivery_id, ev.session_key, "hermes_skip", "agent returned __SKIP__", latency_ms=ms)
+            await broadcaster.publish(ev.session_key, {"type": "hermes.skip", "delivery_id": delivery_id, "ms": ms})
             return
         log.info("← hermes replied %d chars; writing back", len(reply))
         await broadcaster.publish(ev.session_key, {"type": "hermes.replied",
                                                     "delivery_id": delivery_id, "chars": len(reply),
                                                     "reply_preview": reply[:300]})
         ok_w, detail = await write_back(ev, reply, cfg.linear_api_key)
+        ms = int((time.time() - t0) * 1000)
         store.record_delivery(delivery_id, ev.session_key,
-                              "written" if ok_w else "write_fail", detail[:1000])
+                              "written" if ok_w else "write_fail", detail[:1000], latency_ms=ms)
         await broadcaster.publish(ev.session_key, {
             "type": "written" if ok_w else "write_fail",
-            "delivery_id": delivery_id, "detail": detail[:500],
+            "delivery_id": delivery_id, "detail": detail[:500], "ms": ms,
         })
     except Exception as e:
+        ms = int((time.time() - t0) * 1000)
         log.exception("process error")
-        store.record_delivery(delivery_id, ev.session_key, "exception", str(e)[:500])
+        store.record_delivery(delivery_id, ev.session_key, "exception", str(e)[:500], latency_ms=ms)
         await broadcaster.publish(ev.session_key, {"type": "exception",
-                                                    "delivery_id": delivery_id, "error": str(e)[:300]})
+                                                    "delivery_id": delivery_id, "error": str(e)[:300], "ms": ms})
 
 
 async def _healthz(request: web.Request) -> web.Response:
@@ -147,13 +152,18 @@ async def _list_sessions(request: web.Request) -> web.Response:
 async def _list_deliveries(request: web.Request) -> web.Response:
     store: SessionStore = request.app["store"]
     rows = store._conn.execute(
-        "SELECT delivery_id, ts, session_key, status, substr(detail,1,300) "
+        "SELECT delivery_id, ts, session_key, status, substr(detail,1,300), latency_ms "
         "FROM deliveries ORDER BY ts DESC LIMIT 30"
     ).fetchall()
     return web.json_response([
         {"delivery_id": r[0], "ts": r[1], "session_key": r[2],
-         "status": r[3], "detail": r[4]} for r in rows
+         "status": r[3], "detail": r[4], "latency_ms": r[5]} for r in rows
     ])
+
+
+async def _stats(request: web.Request) -> web.Response:
+    store: SessionStore = request.app["store"]
+    return web.json_response(store.stats_24h())
 
 
 def make_app(cfg: Config | None = None) -> web.Application:
@@ -169,6 +179,7 @@ def make_app(cfg: Config | None = None) -> web.Application:
     app.router.add_get("/healthz", _healthz)
     app.router.add_get("/sessions", _list_sessions)
     app.router.add_get("/deliveries", _list_deliveries)
+    app.router.add_get("/stats", _stats)
     app.router.add_get("/sessions/{session_key}/stream", _stream)
     app.router.add_get("/", dashboard_index)
     return app

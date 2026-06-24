@@ -44,6 +44,13 @@ HTML = """<!doctype html>
 <h1>linear-orchestrator</h1>
 <div class="sub" id="meta">connecting…</div>
 
+<div class="grid" style="margin-bottom:16px;">
+  <div class="card"><div class="muted">Last 24h agent runs</div><div style="font-size:24px; font-weight:600;" id="kpi-runs">–</div><div class="muted" id="kpi-runs-sub"></div></div>
+  <div class="card"><div class="muted">Success rate</div><div style="font-size:24px; font-weight:600;" id="kpi-sr">–</div><div class="muted">written / (all agent runs)</div></div>
+  <div class="card"><div class="muted">Avg latency</div><div style="font-size:24px; font-weight:600;" id="kpi-lat">–</div><div class="muted">end-to-end webhook → write-back</div></div>
+  <div class="card"><div class="muted">Active sessions (24h)</div><div style="font-size:24px; font-weight:600;" id="kpi-sess">–</div><div class="muted">unique session keys</div></div>
+</div>
+
 <div class="grid">
   <div class="card">
     <div class="row"><h2>Sessions</h2><button onclick="loadAll()">refresh</button></div>
@@ -51,7 +58,7 @@ HTML = """<!doctype html>
   </div>
   <div class="card">
     <h2>Recent deliveries</h2>
-    <table id="t-deliv"><thead><tr><th>ts</th><th>session</th><th>status</th><th>detail</th></tr></thead><tbody></tbody></table>
+    <table id="t-deliv"><thead><tr><th>ts</th><th>session</th><th>status</th><th>latency</th><th>detail</th></tr></thead><tbody></tbody></table>
   </div>
 </div>
 
@@ -76,10 +83,19 @@ function pill(status) {
 }
 function esc(s) { return String(s||'').replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
 async function loadAll() {
-  const [s, d] = await Promise.all([
+  const [s, d, stats] = await Promise.all([
     fetch(HUB + '/sessions').then(r=>r.json()),
     fetch(HUB + '/deliveries').then(r=>r.json()),
+    fetch(HUB + '/stats').then(r=>r.json()),
   ]);
+  document.getElementById('kpi-runs').textContent = stats.agent_runs;
+  document.getElementById('kpi-runs-sub').textContent =
+    Object.entries(stats.by_status).map(([k,v])=>`${k}:${v.count}`).join(' · ');
+  document.getElementById('kpi-sr').textContent =
+    stats.success_rate === null ? '—' : (stats.success_rate*100).toFixed(0) + '%';
+  document.getElementById('kpi-lat').textContent =
+    stats.avg_processing_ms ? (stats.avg_processing_ms/1000).toFixed(1) + 's' : '—';
+  document.getElementById('kpi-sess').textContent = stats.active_sessions;
   const tbS = document.querySelector('#t-sess tbody');
   tbS.innerHTML = s.map(r => `
     <tr>
@@ -94,6 +110,7 @@ async function loadAll() {
       <td class="muted">${esc(r.ts?.slice(11,19) || '')}</td>
       <td><code class="k">${esc(r.session_key)}</code></td>
       <td>${pill(r.status)}</td>
+      <td class="muted">${r.latency_ms ? (r.latency_ms/1000).toFixed(1)+'s' : ''}</td>
       <td class="muted">${esc(r.detail).slice(0, 160)}</td>
     </tr>`).join('');
   document.getElementById('meta').textContent =
