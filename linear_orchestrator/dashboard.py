@@ -119,14 +119,19 @@ async function loadAll() {
       <td class="muted">${esc(r.last_seen?.slice(11,19) || '')}</td>
     </tr>`).join('');
   const tbD = document.querySelector('#t-deliv tbody');
-  tbD.innerHTML = d.map(r => `
+  tbD.innerHTML = d.map(r => {
+    const retryable = ['hermes_fail','write_fail','exception'].includes(r.status);
+    const retryBtn = retryable
+      ? ` <button onclick="retryDelivery(event,'${esc(r.delivery_id)}')">retry</button>`
+      : '';
+    return `
     <tr>
       <td class="muted">${esc(r.ts?.slice(11,19) || '')}</td>
       <td><code class="k">${esc(r.session_key)}</code></td>
-      <td>${pill(r.status)}</td>
+      <td>${pill(r.status)}${retryBtn}</td>
       <td class="muted">${r.latency_ms ? (r.latency_ms/1000).toFixed(1)+'s' : ''}</td>
       <td class="muted">${esc(r.detail).slice(0, 160)}</td>
-    </tr>`).join('');
+    </tr>`;}).join('');
   document.getElementById('meta').textContent =
     `${s.length} sessions · ${d.length} recent deliveries · ${new Date().toLocaleString('zh-TW')}`;
 }
@@ -174,6 +179,18 @@ async function subscribeStream(key) {
   } catch (e) {
     state.textContent = 'reconnecting in 3s…';
     setTimeout(() => subscribeStream(currentSession), 3000);
+  }
+}
+
+async function retryDelivery(ev, id) {
+  ev.stopPropagation();
+  const r = await fetch(HUB + '/retry/' + encodeURIComponent(id), { method: 'POST' });
+  const j = await r.json();
+  if (r.ok) {
+    document.getElementById('meta').textContent = 'retry queued: ' + (j.new_delivery_id || '?');
+    setTimeout(loadAll, 2000);
+  } else {
+    alert('retry failed: ' + JSON.stringify(j));
   }
 }
 

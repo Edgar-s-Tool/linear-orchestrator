@@ -7,6 +7,7 @@ import time
 from pathlib import Path
 from aiohttp import web
 
+import os
 from .config import Config
 from .sig import verify as verify_sig
 from .parser import parse as parse_event, should_act
@@ -42,13 +43,12 @@ async def _handle_linear(request: web.Request) -> web.Response:
     except Exception as e:
         return web.json_response({"error": f"bad json: {e}"}, status=400)
 
-    # Debug dump of every accepted webhook payload for offline parser tuning.
-    # Path is cheap to disable later; useful while we're still discovering Linear's real schemas.
+    # Dump every accepted webhook payload, keyed by delivery_id so /retry can find it.
     try:
         import pathlib
         dump_dir = pathlib.Path.home() / ".local" / "share" / "linear-orchestrator" / "payloads"
         dump_dir.mkdir(parents=True, exist_ok=True)
-        (dump_dir / f"{int(time.time()*1000)}_{payload.get('type','unknown')}.json").write_text(
+        (dump_dir / f"{delivery_id}.json").write_text(
             json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8"
         )
     except Exception:
@@ -174,6 +174,85 @@ async def _stats(request: web.Request) -> web.Response:
     return web.json_response(store.stats_24h())
 
 
+async def _retry(request: web.Request) -> web.Response:
+    """Re-run a failed delivery using its stored payload. delivery_id in path."""
+    delivery_id = request.match_info["delivery_id"]
+    import pathlib
+    dump = pathlib.Path.home() / ".local" / "share" / "linear-orchestrator" / "payloads" / f"{delivery_id}.json"
+    if not dump.exists():
+        return web.json_response({"error": "no stored payload", "delivery_id": delivery_id}, status=404)
+    try:
+        payload = json.loads(dump.read_text(encoding="utf-8"))
+    except Exception as e:
+        return web.json_response({"error": f"bad payload file: {e}"}, status=500)
+    cfg: Config = request.app["cfg"]
+    store: SessionStore = request.app["store"]
+    ev = parse_event(payload, cfg.agent_linear_user_id)
+    new_id = f"retry-{delivery_id}-{int(time.time())}"
+    store.upsert(ev.session_key, ev.issue_id, ev.issue_identifier, ev.agent_session_id)
+    request.app["_pending"].add(asyncio.create_task(
+        _process(cfg, store, ev, new_id, request.app["bcast"])
+    ))
+    return web.json_response({"status": "retrying", "original": delivery_id,
+                              "new_delivery_id": new_id, "session": ev.session_key}, status=202)
+
+
+async def _get_payload(request: web.Request) -> web.Response:
+    delivery_id = request.match_info["delivery_id"]
+    import pathlib
+    dump = pathlib.Path.home() / ".local" / "share" / "linear-orchestrator" / "payloads" / f"{delivery_id}.json"
+    if not dump.exists():
+        return web.json_response({"error": "no stored payload"}, status=404)
+    return web.Response(text=dump.read_text(encoding="utf-8"), content_type="application/json")
+
+
+async def _self_test(app: web.Application) -> None:
+    """Background loop: ping healthz from inside, record drift."""
+    import aiohttp as _ah
+    cfg: Config = app["cfg"]
+    store: SessionStore = app["store"]
+    url = f"http://127.0.0.1:{cfg.port}/healthz"
+    interval = int(os.environ.get("SELF_TEST_INTERVAL_SEC", "600"))
+    log.info("self-test loop started, interval=%ds", interval)
+    while True:
+        try:
+            await asyncio.sleep(interval)
+            t0 = time.time()
+            async with _ah.ClientSession() as s:
+                async with s.get(url, timeout=_ah.ClientTimeout(total=5)) as r:
+                    ms = int((time.time() - t0) * 1000)
+                    status = "ok" if r.status == 200 else f"http_{r.status}"
+                    store.record_delivery(f"selftest-{int(t0)}", "_selftest",
+                                          status, f"healthz={r.status} ms={ms}", latency_ms=ms)
+        except asyncio.CancelledError:
+            return
+        except Exception as e:
+            store.record_delivery(f"selftest-{int(time.time())}", "_selftest",
+                                  "fail", f"err={e!s}"[:200])
+
+
+async def _cleanup_payloads(app: web.Application) -> None:
+    """Background loop: delete dumped payloads older than 7 days."""
+    import pathlib
+    dump_dir = pathlib.Path.home() / ".local" / "share" / "linear-orchestrator" / "payloads"
+    while True:
+        try:
+            await asyncio.sleep(3600 * 24)
+            cutoff = time.time() - 7 * 86400
+            removed = 0
+            if dump_dir.exists():
+                for p in dump_dir.iterdir():
+                    if p.is_file() and p.stat().st_mtime < cutoff:
+                        try: p.unlink(); removed += 1
+                        except Exception: pass
+            if removed:
+                log.info("cleanup: removed %d old payload files", removed)
+        except asyncio.CancelledError:
+            return
+        except Exception:
+            log.exception("cleanup error")
+
+
 def make_app(cfg: Config | None = None) -> web.Application:
     cfg = cfg or Config.from_env()
     db_path = Path.home() / ".local" / "share" / "linear-orchestrator" / "sessions.db"
@@ -189,7 +268,21 @@ def make_app(cfg: Config | None = None) -> web.Application:
     app.router.add_get("/deliveries", _list_deliveries)
     app.router.add_get("/stats", _stats)
     app.router.add_get("/sessions/{session_key}/stream", _stream)
+    app.router.add_post("/retry/{delivery_id}", _retry)
+    app.router.add_get("/payloads/{delivery_id}", _get_payload)
     app.router.add_get("/", dashboard_index)
+
+    async def _on_startup(app):
+        app["_bg_self_test"] = asyncio.create_task(_self_test(app))
+        app["_bg_cleanup"] = asyncio.create_task(_cleanup_payloads(app))
+
+    async def _on_cleanup(app):
+        for k in ("_bg_self_test", "_bg_cleanup"):
+            t = app.get(k)
+            if t: t.cancel()
+
+    app.on_startup.append(_on_startup)
+    app.on_cleanup.append(_on_cleanup)
     return app
 
 
