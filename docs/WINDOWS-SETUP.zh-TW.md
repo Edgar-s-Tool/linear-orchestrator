@@ -31,7 +31,8 @@ orchestrator 需要這些（名稱一字不差）：
 | 變數 | 用途 |
 |------|------|
 | `LINEAR_API_KEY` | 讀寫 Linear issue |
-| `LINEAR_WEBHOOK_SECRET` | 驗證 webhook 簽章 |
+| `LINEAR_WEBHOOK_SECRET` | 驗證 webhook 簽章（workspace webhook） |
+| `LINEAR_OAUTH_WEBHOOK_SECRET` | **Hermes Agent OAuth App** 的 Signing secret（委派 AgentSessionEvent 用；跟 workspace 不同） |
 | `LINEAR_OAUTH_CLIENT_ID` | 委派回寫 Linear（OAuth App） |
 | `LINEAR_OAUTH_CLIENT_SECRET` | 同上 |
 | `HERMES_PATH` | Hermes CLI 路徑（可選，會自動找） |
@@ -101,6 +102,28 @@ http://localhost:8645
 存檔後幾秒，<https://webhooks.edgars.tools/healthz> 應回 200。
 
 若還是 530/502：確認 orchestrator 有在跑 + tunnel hostname 指到 **8645** 不是舊的 **8644**。
+
+### ⚠️ WSL 搶 port（常見根因）
+
+若 WSL 裡還有舊的 `python -m linear_orchestrator` 在跑：
+
+- `wslrelay` 會佔 `127.0.0.1:8645`
+- Cloudflare tunnel 指 `http://localhost:8645` 時，**流量進 WSL 舊版**，不是 Windows 新版
+- `healthz` 仍可能 200，但 **委派 webhook 會進錯機器或驗簽失敗** → Linear 顯示 Did not respond
+
+檢查：
+
+```powershell
+netstat -ano | findstr ":8645"
+powershell -ExecutionPolicy Bypass -File .\scripts\Check-LinearOrchestrator.ps1
+```
+
+啟動腳本會自動 `pkill` WSL 舊版；也可手動：
+
+```powershell
+wsl -e bash -lc "pkill -f 'python -m linear_orchestrator' || true"
+powershell -ExecutionPolicy Bypass -File .\scripts\Start-LinearOrchestrator.ps1 -Wait
+```
 
 ---
 

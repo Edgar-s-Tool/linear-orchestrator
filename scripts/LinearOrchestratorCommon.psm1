@@ -107,6 +107,46 @@ function Get-DopplerLaunchArgs {
     }
 }
 
+function Test-WslOrchestratorConflict {
+    $wslrelay = Get-NetTCPConnection -LocalPort 8645 -State Listen -ErrorAction SilentlyContinue |
+        Where-Object { $_.LocalAddress -eq "127.0.0.1" }
+    if (-not $wslrelay) {
+        return $null
+    }
+
+    $wslListening = $false
+    try {
+        $out = wsl -e bash -lc "ss -tln 2>/dev/null | grep -q ':8645 ' && echo yes || echo no" 2>$null
+        $wslListening = ($out -match "yes")
+    } catch {
+        $wslListening = $false
+    }
+
+    if ($wslListening) {
+        return "WSL linear-orchestrator is listening on :8645. cloudflared -> localhost:8645 hits wslrelay -> WSL (not Windows). Stop WSL orchestrator first."
+    }
+    return $null
+}
+
+function Stop-WslOrchestrator {
+    $msg = Test-WslOrchestratorConflict
+    if (-not $msg) {
+        return $false
+    }
+
+    Write-Host "Stopping WSL linear-orchestrator (port 8645 conflict) ..."
+    wsl -e bash -lc "pkill -f 'python -m linear_orchestrator' 2>/dev/null || true" | Out-Null
+    Start-Sleep -Seconds 2
+
+    $still = Test-WslOrchestratorConflict
+    if ($still) {
+        Write-Warning $still
+        return $false
+    }
+    Write-Host "WSL orchestrator stopped."
+    return $true
+}
+
 function Build-OrchestratorEnvironment {
     $hermesPath = Resolve-HermesPath
     $envMap = @{
@@ -136,5 +176,7 @@ Export-ModuleMember -Function @(
     "Test-OrchestratorHealth",
     "Get-OrchestratorProcess",
     "Get-DopplerLaunchArgs",
-    "Build-OrchestratorEnvironment"
+    "Build-OrchestratorEnvironment",
+    "Test-WslOrchestratorConflict",
+    "Stop-WslOrchestrator"
 )

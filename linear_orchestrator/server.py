@@ -29,6 +29,14 @@ async def _handle_linear(request: web.Request) -> web.Response:
     delivery_id = (request.headers.get("Linear-Delivery", "") or
                    request.headers.get("X-Request-ID", "") or
                    f"d-{int(time.time()*1000)}")
+    peer = request.remote or "?"
+    ev_hint = ""
+    try:
+        ev_hint = str(json.loads(body.decode("utf-8")).get("type", ""))
+    except Exception:
+        ev_hint = "?"
+    log.info("webhook POST delivery=%s type=%s peer=%s bytes=%d sig=%s",
+             delivery_id, ev_hint, peer, len(body), "yes" if sig else "no")
 
     ok, reason = verify_sig(body, cfg.linear_webhook_secret, sig, ts)
     if not ok:

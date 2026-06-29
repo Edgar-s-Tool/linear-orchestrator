@@ -18,6 +18,12 @@ if ($proc) {
     Write-Host "Process: STOPPED"
 }
 
+$wslConflict = Test-WslOrchestratorConflict
+if ($wslConflict) {
+    Write-Host "WSL conflict: $wslConflict"
+    Write-Host "Fix: powershell -ExecutionPolicy Bypass -File .\scripts\Start-LinearOrchestrator.ps1 -Wait"
+}
+
 $localOk = Test-OrchestratorHealth
 Write-Host "Local health ($(Get-OrchestratorHealthUrl)): $(if ($localOk) { 'OK' } else { 'FAIL' })"
 

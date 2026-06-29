@@ -11,6 +11,12 @@ $repoRoot = Get-OrchestratorRepoRoot
 $venvPython = Join-Path $repoRoot ".venv\Scripts\python.exe"
 Ensure-OrchestratorRunDir
 
+$wslConflict = Test-WslOrchestratorConflict
+if ($wslConflict) {
+    Write-Host "WARN: $wslConflict"
+    Stop-WslOrchestrator | Out-Null
+}
+
 if (-not (Test-Path -LiteralPath $venvPython)) {
     throw "Missing venv. Run scripts\Install-LinearOrchestratorWindows.ps1 first."
 }
