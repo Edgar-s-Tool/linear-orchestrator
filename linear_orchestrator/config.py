@@ -1,9 +1,25 @@
 """Runtime config loaded from env + optional .env files."""
 from __future__ import annotations
 import os
+import shutil
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from dotenv import load_dotenv
+
+
+def _default_hermes_path() -> str:
+    found = shutil.which("hermes")
+    if found:
+        return found
+    if sys.platform == "win32":
+        for candidate in (
+            Path(os.environ.get("LOCALAPPDATA", "")) / "hermes" / "hermes-agent" / "venv" / "Scripts" / "hermes.exe",
+            Path.home() / ".local" / "bin" / "hermes.exe",
+        ):
+            if candidate.exists():
+                return str(candidate)
+    return "/home/edgar/.local/bin/hermes"
 
 
 def _load_envs() -> None:
@@ -52,7 +68,7 @@ class Config:
         cfg = cls(
             linear_api_key=need("LINEAR_API_KEY"),
             linear_webhook_secrets=secrets,
-            hermes_path=os.environ.get("HERMES_PATH", "/home/edgar/.local/bin/hermes"),
+            hermes_path=os.environ.get("HERMES_PATH", _default_hermes_path()),
             host=os.environ.get("ORCHESTRATOR_HOST", "0.0.0.0"),
             port=int(os.environ.get("ORCHESTRATOR_PORT", "8645")),
             hermes_timeout_sec=int(os.environ.get("HERMES_TIMEOUT_SEC", "180")),

@@ -30,60 +30,51 @@ Linear  →  Cloudflare edge  →  cloudflared tunnel  →  127.0.0.1:8645
 - 同一 issue 連續事件要保持對話延續，需要 session 映射。
 - Linear Agent Session 協定需要回應 `agentSessionActivityCreate`，不是普通 comment。
 
-## 安裝（WSL Ubuntu）
+## 安裝（Windows 原生 — 推薦）
+
+Repo 主場：`G:\AI_WORK_512\repos\linear-orchestrator`
+
+```powershell
+cd G:\AI_WORK_512\repos\linear-orchestrator
+powershell -ExecutionPolicy Bypass -File .\scripts\Install-LinearOrchestratorWindows.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\Start-LinearOrchestrator.ps1 -Wait
+powershell -ExecutionPolicy Bypass -File .\scripts\Check-LinearOrchestrator.ps1
+```
+
+環境變數放 `C:\Users\<你>\.hermes\.env` 或透過 Doppler `handcraft-mcp/prd`。詳見 `docs/WINDOWS-SETUP.zh-TW.md`。
+
+開機自啟：`scripts\install-windows-scheduled-task.cmd`
+
+## 安裝（WSL Ubuntu — 舊路徑，可選）
 
 ```bash
 git clone https://github.com/Edgar-s-Tool/linear-orchestrator.git ~/linear-orchestrator
 cd ~/linear-orchestrator
-bash scripts/install.sh           # 建 venv + 裝相依
-bash scripts/install-systemd.sh   # 選用：設為 systemd service，開機自啟（需 sudo）
+bash scripts/install.sh
+bash scripts/install-systemd.sh   # 選用
 ```
 
-開機自啟前需確認 WSL systemd 已啟用：
+## 操作（Windows）
 
-```bash
-# 在 WSL 內
-grep -q '^systemd=true' /etc/wsl.conf || { echo -e '[boot]\nsystemd=true' | sudo tee -a /etc/wsl.conf; }
-# 然後在 Windows PowerShell：wsl --shutdown
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts\Start-LinearOrchestrator.ps1
+powershell -ExecutionPolicy Bypass -File scripts\Check-LinearOrchestrator.ps1
+powershell -ExecutionPolicy Bypass -File scripts\Stop-LinearOrchestrator.ps1
 ```
 
-裝完開 `http://127.0.0.1:8645/` 看內建 dashboard（最近 sessions / deliveries + NDJSON live stream）。
-
-要在 `~/.hermes/.env`（會被 service 讀取）已經有：
-
-```
-LINEAR_API_KEY=lin_api_...
-LINEAR_WEBHOOK_SECRET=lin_wh_...
-HERMES_PATH=/home/edgar/.local/bin/hermes
-```
-
-## 操作
-
-```bash
-sudo systemctl start  linear-orchestrator
-sudo systemctl status linear-orchestrator
-journalctl -u linear-orchestrator -f
-```
-
-或非 systemd：
-
-```bash
-bash scripts/start.sh   # nohup 背景跑
-bash scripts/stop.sh
-bash scripts/test.sh    # 自製簽章測試端到端
-```
+Dashboard：`http://127.0.0.1:8645/`
 
 ## tunnel 整合
 
-`~/.cloudflared/config.yml` ingress 把 `webhooks.edgars.tools` 從原本指向 hermes 8644 改成指這個 service：
+Token tunnel **edgar-local-01-tunnel**（Cloudflare Dashboard 管理）：
 
-```yaml
-- hostname: webhooks.edgars.tools
-  service: http://<WSL_IP>:8645
+```
+webhook.whoasked.vip → http://localhost:8645
 ```
 
-scripts/update-ingress.cmd 會幫忙自動偵測 WSL IP + 改 + 重啟 tunnel。
+（若改用 `webhooks.edgars.tools`，同樣指 `http://localhost:8645`，不要用 WSL IP。）
 
+Cloudflared 跑在 Windows 服務即可。
 ## Session 規則
 
 | Event 類型 | session key | 行為 |
@@ -95,7 +86,7 @@ scripts/update-ingress.cmd 會幫忙自動偵測 WSL IP + 改 + 重啟 tunnel。
 
 ## 依賴
 
-- Python 3.10+（WSL 預設 ubuntu 有）
+- Python 3.10+（Windows 或 WSL）
 - `aiohttp`, `pyyaml`, `python-dotenv`
 - hermes CLI 已裝
 - Linear personal API key（可讀寫 issue / comment）
