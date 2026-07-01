@@ -98,9 +98,21 @@ def parse(payload: dict, agent_user_id: str = "") -> Event:
         ev.issue_url = str(data.get("url") or "")
         ev.body_text = str(data.get("description") or "")
         assignee_id = str(_g(data, "assignee", "id") or data.get("assigneeId") or "")
+        delegate_id = str(_g(data, "delegate", "id") or data.get("delegateId") or "")
         if agent_user_id and assignee_id == agent_user_id:
             ev.mentions_agent = True
             ev.notes.append("assigned to agent")
+        if agent_user_id and delegate_id == agent_user_id:
+            ev.mentions_agent = True
+            ev.notes.append("delegated to agent")
+        # Issue:update may only carry delegate change in updatedFrom.
+        updated = payload.get("updatedFrom") or data.get("updatedFrom") or {}
+        if agent_user_id:
+            prev_delegate = str(_g(updated, "delegate", "id") or updated.get("delegateId") or "")
+            if delegate_id == agent_user_id and prev_delegate != agent_user_id:
+                ev.mentions_agent = True
+                if "delegated to agent" not in ev.notes:
+                    ev.notes.append("delegated to agent")
         return ev
 
     # Comment events
@@ -164,6 +176,6 @@ def should_act(ev: Event) -> tuple[bool, str]:
         return True, "agent session"
     if ev.mentions_agent and ev.issue_id:
         return True, "mentioned + issue context"
-    if ev.type == "Issue" and "assigned to agent" in ev.notes:
+    if ev.type == "Issue" and ("assigned to agent" in ev.notes or "delegated to agent" in ev.notes):
         return True, "issue assigned to agent"
     return False, f"skip: type={ev.type} action={ev.action} mentions={ev.mentions_agent}"

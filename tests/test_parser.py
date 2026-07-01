@@ -26,7 +26,25 @@ def test_comment_no_mention_skipped():
     assert ok is False
 
 
-def test_agent_session_event():
+def test_issue_delegated_to_agent():
+    ev = parse({
+        "type": "Issue",
+        "action": "update",
+        "data": {
+            "id": "i1",
+            "identifier": "EDG-1",
+            "title": "t",
+            "assigneeId": "human-1",
+            "delegateId": "agent-1",
+        },
+    }, agent_user_id="agent-1")
+    assert ev.mentions_agent is True
+    assert "delegated to agent" in ev.notes
+    ok, reason = should_act(ev)
+    assert ok
+    assert "assigned" in reason
+
+
     ev = parse({"type": "AgentSessionEvent",
                 "data": {"agentSession": {"id": "as-9",
                                           "issue": {"id": "i", "identifier": "X-1"}},

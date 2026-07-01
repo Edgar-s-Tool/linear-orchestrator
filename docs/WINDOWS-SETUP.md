@@ -1,79 +1,69 @@
-# linear-orchestrator — Windows 原生設定（不用 WSL）
-
-最後更新：2026-07-01
+# linear-orchestrator — Windows 設定（不用 WSL）
 
 ## 架構
 
 ```
 Linear 瀏覽器 assign/delegate
-    → https://webhooks.edgars.tools/webhooks/linear  (或 webhook.whoasked.vip)
-    → Cloudflare tunnel edgar-local-01-tunnel → http://localhost:8645
-    → linear-orchestrator (Windows Python)
+    → https://webhooks.edgars.tools/webhooks/linear  (Cloudflare tunnel)
+    → Windows localhost:8645  (linear-orchestrator)
     → hermes.exe
     → Linear agentActivityCreate / comment 回寫
 ```
 
-參考：
-- [Linear Webhooks](https://linear.app/developers/webhooks) — `Linear-Signature` HMAC-SHA256、5 秒內 200
-- [Hermes webhook 章節](https://github.com/NousResearch/hermes-agent) — `~/.hermes/config.yaml` routes（本 repo 用獨立 orchestrator 取代 gateway 直餵）
+官方參考：
+- [Linear Webhooks](https://linear.app/developers/webhooks) — `Linear-Signature` HMAC-SHA256
+- [Linear Agents](https://linear.app/developers/agents) — delegate + AgentSessionEvent
+- [Agent Interaction](https://linear.app/developers/agent-interaction) — 10 秒內 `thought` ack
 
-## 1. 安裝
-
-```powershell
-cd V:\projects\linear-orchestrator
-py -3.13 -m venv .venv
-.\.venv\Scripts\pip install -e .
-```
-
-## 2. 環境變數（`%USERPROFILE%\.hermes\.env`）
+## 1. 環境變數（`%USERPROFILE%\.hermes\.env`）
 
 | 變數 | 必填 | 用途 |
 |------|------|------|
+| `LINEAR_WEBHOOK_SECRET` | 是 | Workspace webhook 驗章 |
+| `LINEAR_OAUTH_WEBHOOK_SECRET` | 建議 | Hermes OAuth app 的 AgentSession webhook 驗章（Linear Developer → Application → Webhooks） |
 | `LINEAR_API_KEY` | 是 | comment 回寫 |
-| `LINEAR_WEBHOOK_SECRET` | 是 | webhook HMAC 驗章 |
-| `LINEAR_OAUTH_CLIENT_ID` / `LINEAR_OAUTH_CLIENT_SECRET` | 是 | assign → `agentActivityCreate`（10 秒 thought） |
-| `AGENT_LINEAR_USER_ID` | 是 | 辨識 delegate 給 Hermes |
-| `HERMES_PATH` | 建議 | 例：`%LOCALAPPDATA%\hermes\hermes-agent\venv\Scripts\hermes.exe` |
+| `LINEAR_OAUTH_CLIENT_ID` / `SECRET` | 是 | `agentActivityCreate`（assign 流程） |
+| `AGENT_LINEAR_USER_ID` | 是 | Hermes Agent 的 Linear user id |
+| `HERMES_PATH` | 是 | 例如 `%LOCALAPPDATA%\hermes\hermes-agent\venv\Scripts\hermes.exe` |
 
-**重要**：Hermes OAuth App 的 webhook URL 也須指向  
-`https://webhooks.edgars.tools/webhooks/linear`  
-（Linear → Settings → API → 你的 OAuth App）。  
-否則 workspace webhook 收得到 comment，但 **AgentSessionEvent（assign）** 可能進不來。
-
-## 3. 啟動
+## 2. 啟動 orchestrator
 
 ```powershell
-powershell -File V:\projects\linear-orchestrator\scripts\start-windows.ps1
-curl http://127.0.0.1:8645/healthz
-```
-
-## 4. 驗證
-
-```powershell
-# 簽章測試（本機 + 公網）
-powershell -File scripts\test-windows.ps1
-powershell -File scripts\test-windows.ps1 -Url https://webhooks.edgars.tools/webhooks/linear
-
-# Assign / AgentSession 模擬（用真實 pending session）
-powershell -File scripts\test-assign-windows.ps1 -UseLatestPendingSession -IssueIdentifier EDG-286
+cd V:\projects\linear-orchestrator
+python -m venv .venv
+.\.venv\Scripts\pip install -e .
+.\scripts\start-windows.ps1
 ```
 
 Dashboard：`http://127.0.0.1:8645/`
 
-## 5. 瀏覽器真人測試（assign 一次）
+## 3. 驗證 webhook
 
-1. 開 Linear issue（例：[EDG-286](https://linear.app/edgarstool/issue/EDG-286/test-hermes-assign-smoke-test)）
-2. 右側 **Delegate** → 選 **Hermes Agent**
-3. <10 秒內應看到 thought「收到委派…」
-4. 1–3 分鐘內看到最終 response
+```powershell
+# 公網 healthz（應 200）
+curl -i https://webhooks.edgars.tools/healthz
 
-## 6. Cloudflare tunnel
+# 本機 signed 測試
+.\scripts\test-assign-windows.ps1 -IssueIdentifier EDG-287
+```
 
-公網 hostname（token tunnel `edgar-local-01-tunnel`）：
+## 4. 瀏覽器 assign 測試
 
-| Hostname | Service |
-|----------|---------|
-| `webhooks.edgars.tools` | `http://localhost:8645` |
-| `webhook.whoasked.vip` | `http://localhost:8645` |
+1. Linear 開 issue，右側 **Delegate** → **Hermes Agent**
+2. 10 秒內應看到 thought「收到委派…」
+3. 完成後有 response
 
-Linear 已註冊 webhook：`https://webhooks.edgars.tools/webhooks/linear`
+> 注意：Linear 新版用 **Delegate**（不是 Assignee）把工單交給 agent。
+
+## 5. Warp Oz（雲端 agent）
+
+```powershell
+.\scripts\setup-warp-linear.ps1
+```
+
+或開 [oz.warp.dev](https://oz.warp.dev) 用精靈連接 Linear。完成後在 Linear **Delegate → Oz** 測試。
+
+## Tunnel 備註
+
+- **現役 URL**：`https://webhooks.edgars.tools/webhooks/linear`（已指向 Windows `:8645`）
+- `webhook.whoasked.vip` 若仍 530，可忽略（Linear webhook 已改用 edgars.tools）

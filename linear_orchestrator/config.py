@@ -52,7 +52,12 @@ class Config:
         cfg = cls(
             linear_api_key=need("LINEAR_API_KEY"),
             linear_webhook_secrets=secrets,
-            hermes_path=os.environ.get("HERMES_PATH", "/home/edgar/.local/bin/hermes"),
+            hermes_path=os.environ.get(
+                "HERMES_PATH",
+                str(Path.home() / "AppData" / "Local" / "hermes" / "hermes-agent" / "venv" / "Scripts" / "hermes.exe")
+                if os.name == "nt"
+                else "/home/edgar/.local/bin/hermes",
+            ),
             host=os.environ.get("ORCHESTRATOR_HOST", "0.0.0.0"),
             port=int(os.environ.get("ORCHESTRATOR_PORT", "8645")),
             hermes_timeout_sec=int(os.environ.get("HERMES_TIMEOUT_SEC", "180")),
