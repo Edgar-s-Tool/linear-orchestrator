@@ -107,6 +107,21 @@ def test_classify_issues_buckets_correctly():
     assert planned[0].state_type == "started"
 
 
+def test_classify_issues_ignores_negated_block_labels():
+    now = standup._now()
+    cutoff = now - timedelta(hours=24)
+    nodes = [
+        _node("EDG-17", "started", labels=["Unblocked"]),
+        _node("EDG-18", "unstarted", labels=["Non-blocking"]),
+        _node("EDG-19", "started", labels=["Blocked"]),
+    ]
+    issues = [standup._issue_from_node(n) for n in nodes]
+    _, planned, blockers = standup.classify_issues(issues, cutoff)
+
+    assert {i.identifier for i in planned} == {"EDG-17", "EDG-18"}
+    assert [i.identifier for i in blockers] == ["EDG-19"]
+
+
 # --------------------------------------------------------------------------- #
 # rendering
 # --------------------------------------------------------------------------- #

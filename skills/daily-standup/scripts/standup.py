@@ -29,6 +29,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import urllib.error
@@ -234,7 +235,7 @@ def classify_issues(
     """Split issues into (done_recently, planned_today, blockers)."""
     done, planned, blockers = [], [], []
     for iss in issues:
-        is_blocked = bool(iss.blocked_by) or any("block" in l.lower() for l in iss.labels)
+        is_blocked = bool(iss.blocked_by) or _has_blocker_label(iss.labels)
         if iss.state_type in DONE_STATE_TYPES:
             if _within(iss.completed_at or iss.updated_at, cutoff):
                 done.append(iss)
@@ -246,6 +247,19 @@ def classify_issues(
     # started 排在 unstarted 前面，讓「進行中」優先呈現。
     planned.sort(key=lambda i: 0 if i.state_type == "started" else 1)
     return done, planned, blockers
+
+
+def _has_blocker_label(labels: list[str]) -> bool:
+    blocker_words = {"block", "blocked", "blocker", "blockers", "blocking"}
+    for label in labels:
+        words = re.findall(r"[a-z0-9]+", label.lower())
+        for idx, word in enumerate(words):
+            if word not in blocker_words:
+                continue
+            if idx > 0 and words[idx - 1] in {"non", "not"}:
+                continue
+            return True
+    return False
 
 
 # --------------------------------------------------------------------------- #
