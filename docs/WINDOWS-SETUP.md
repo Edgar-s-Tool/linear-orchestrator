@@ -35,6 +35,20 @@ python -m venv .venv
 .\scripts\start-windows.ps1
 ```
 
+### 開機自動啟動（已裝）
+
+登入 Windows 時會跑 `Startup\Hermes-Linear-Orchestrator.cmd` → `start-windows-autostart.ps1`：
+
+- **頻率**：每次你**登入 Windows 一次**（不是每幾秒輪詢）
+- **行為**：若 `:8645` 還沒在聽，就背景啟動 orchestrator；已在跑則跳過
+- **不需管理員**（用 Startup 資料夾，排程工作若 Access denied 可用此法）
+
+手動安裝/移除：Startup 捷徑在 `%APPDATA%\Microsoft\Windows\Start Menu\Programs\Startup\`
+
+```powershell
+.\scripts\start-windows-autostart.ps1   # 手動測一次
+```
+
 Dashboard：`http://127.0.0.1:8645/`
 
 ## 3. 驗證 webhook
