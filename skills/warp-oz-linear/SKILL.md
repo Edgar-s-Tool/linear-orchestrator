@@ -63,6 +63,13 @@ Linear issue
 |------|-----|--------|------|
 | `edgar-linear-dev` | `gMtdQHl184AFGV1DgM8eLk` | `python:3.11` | `Edgar-s-Tool/linear-orchestrator` |
 | `deploy-pilot` | `24syFwqAf4M1SUPXZWEywM` | `warpdotdev/dev-base:latest` | `Edgars-tool/deploy-pilot` |
+| `new world` | `C0onm8hL5yAcFPJO85EDp6` | `node22` | 多個 Edgars-tool repos |
+
+**Linear integration：** 已連線（2026-07-01），綁定 `edgar-linear-dev`。
+
+**本機一鍵腳本：**
+- `V:\projects\linear-orchestrator\scripts\setup-warp-api.ps1` — 檢查登入、API、環境
+- `V:\projects\linear-orchestrator\scripts\ask-warp.ps1` — 用白話叫 Warp 做事
 
 ## Procedure
 

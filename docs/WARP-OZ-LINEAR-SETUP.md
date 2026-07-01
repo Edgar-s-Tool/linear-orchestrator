@@ -45,7 +45,26 @@ oz integration create linear --environment <ENV_ID>
 3. **Delegate → Oz**（或 comment `@Oz`）
 4. 預期：Oz ack → task list → 可能開 PR / session link
 
-## 目前狀態（2026-07-01）
+## 目前狀態（2026-07-01，已自動設定）
 
-- Linear workspace **尚未安裝 Oz**（`list_users` 查無 Oz）
-- 需 Edgar 在 oz.warp.dev 或 Warp 終端機完成 environment + integration（會開瀏覽器 OAuth）
+| 項目 | 狀態 |
+|------|------|
+| Warp 登入 | ✅ edgar@edgarbeyourself.com / 團隊 edgarstool |
+| API 金鑰 | ✅ 已寫入 Windows 使用者環境變數 `WARP_API_KEY` |
+| Environment `edgar-linear-dev` | ✅ `gMtdQHl184AFGV1DgM8eLk` |
+| Linear integration | ✅ 已連線，綁定 `edgar-linear-dev` |
+| 一鍵腳本 | `scripts/setup-warp-api.ps1`、`scripts/ask-warp.ps1` |
+
+### 德德怎麼用（不用懂 API）
+
+```powershell
+cd V:\projects\linear-orchestrator
+
+# 檢查一切是否正常
+.\scripts\setup-warp-api.ps1
+
+# 叫 Warp 做事（例：掃描 linear-orchestrator）
+.\scripts\ask-warp.ps1 -Prompt "讀 README 並用三句話摘要這個專案在做什麼"
+```
+
+或在 **Linear** 開 issue → 右側 **Delegate → Oz**（或留言 `@Oz`）。
